@@ -6,7 +6,7 @@ provider "google" {
 
 terraform {
   backend "gcs" {
-    prefix  = "codefresh/${terraform.workspace}/state"
+    prefix  = "codefresh/${terraform.workspace}"
   }
 }
 
