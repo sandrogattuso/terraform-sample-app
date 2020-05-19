@@ -26,19 +26,20 @@ steps:
       - echo gcp_project = \"$GCLOUD_PROJECT\" > vars.auto.tfvars
       - gcloud auth activate-service-account --key-file=/codefresh/volume/account.json
       - gsutil cp "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE" $STACK_FILE || echo "0" > $STACK_FILE
-      - cf_export CURRENT_STACK=$(cat $STACK_FILE)
-      - cf_export OLD_STACK="$(( ($CURRENT_STACK+1) %2 ))"
-      - cf_export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - CURRENT_STACK=$(cat $STACK_FILE)
+      - OLD_STACK="$(( ($CURRENT_STACK+1) %2 ))"
+      - CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - cf_export CURRENT_STACK OLD_STACK CURRENT_STACK_NAME
   TerraformPlan:
     image: hashicorp/terraform:0.12.0
     title: Terraform plan
     stage: plan
     commands:
-      - echo $CURRENT_STACK
       - echo 'yes' | terraform init -force-copy -backend-config="bucket=$STORAGE_BUCKET"
       - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
-      - cf_export BLUE_GREEN=false
-      - terraform plan -detailed-exitcode || if [[ $? == 2 ]]; then cf_export BLUE_GREEN=true; cf_export OLD_STACK=$CURRENT_STACK; cf_export CURRENT_STACK=$(( ($CURRENT_STACK+1) %2 )); else echo "Error excuting plan"; exit 1; fi
+      - BLUE_GREEN=false
+      - terraform plan -detailed-exitcode || if [[ $? == 2 ]]; then BLUE_GREEN=true; OLD_STACK=$CURRENT_STACK; CURRENT_STACK=$(( ($CURRENT_STACK+1) %2 )); else echo "Error excuting plan"; exit 1; fi
+      - cf_export BLUE_GREEN OLD_STACK CURRENT_STACK
   SetCurrentStackName:
     image: 'google/cloud-sdk'
     title: Setting Stack Name
@@ -46,8 +47,9 @@ steps:
     shell: bash
     commands:
       - STACK_ARRAY=($STACKS)
-      - cf_export OLD_STACK_NAME="${STACK_ARRAY[$OLD_STACK]}"
-      - cf_export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - OLD_STACK_NAME="${STACK_ARRAY[$OLD_STACK]}"
+      - CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - cf_export OLD_STACK_NAME CURRENT_STACK_NAME
   TerraformApply:
     image: hashicorp/terraform:0.12.0
     title: Terraform apply
