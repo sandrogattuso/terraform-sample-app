@@ -34,5 +34,6 @@ steps:
     title: Terraform destroy
     stage: destroy
     commands:
+      - echo 'yes' | terraform init -force-copy -backend-config="bucket=$STORAGE_BUCKET"
       - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
       - terraform destroy -auto-approve
