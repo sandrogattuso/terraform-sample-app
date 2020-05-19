@@ -6,7 +6,6 @@ provider "google" {
 
 terraform {
   backend "gcs" {
-    bucket  = "sandro-devisland-tf-state"
     prefix  = "codefresh/${terraform.workspace}/state"
   }
 }
