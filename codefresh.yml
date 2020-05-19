@@ -19,14 +19,13 @@ steps:
     stage: prepare
     shell: bash
     commands:
-      - cf_export BUCKET_URL="gs://$STORAGE_BUCKET/codefresh/$STACK_FILE"
       - STACK_ARRAY=($STACKS)
       - echo "$ACCOUNT_JSON_CONTENT" | base64 -d > /codefresh/volume/account.json
       - cf_export GOOGLE_CLOUD_KEYFILE_JSON=/codefresh/volume/account.json
       - cf_export GOOGLE_APPLICATION_CREDENTIALS=/codefresh/volume/account.json
       - echo gcp_project = \"$GCLOUD_PROJECT\" > vars.auto.tfvars
       - gcloud auth activate-service-account --key-file=/codefresh/volume/account.json
-      - gsutil cp $BUCKET_URL $STACK_FILE || echo "0" > $STACK_FILE
+      - gsutil cp "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE" $STACK_FILE || echo "0" > $STACK_FILE
       - cf_export CURRENT_STACK=$(cat $STACK_FILE)
       - cf_export OLD_STACK="$(( ($CURRENT_STACK+1) %2 ))"
       - cf_export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
@@ -63,7 +62,7 @@ steps:
     commands:
       - echo "$CURRENT_STACK" > $STACK_FILE
       - gcloud auth activate-service-account --key-file=/codefresh/volume/account.json
-      - gsutil cp $STACK_FILE $BUCKET_URL
+      - gsutil cp $STACK_FILE "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE"
   TerraformDestroy:
     image: hashicorp/terraform:0.12.0
     title: Terraform destroy
