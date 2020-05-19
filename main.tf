@@ -1,3 +1,5 @@
+variable "gcp_project" {}
+
 provider "google" {
   project = var.gcp_project
   region  = "australia-southeast1"
