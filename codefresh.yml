@@ -1,28 +1,77 @@
 version: '1.0'
 stages:
   - checkout
-  - prepare   
+  - prepare
+  - plan
   - deploy
+  - destroy
 steps:
   main_clone:
     title: Cloning main repository...
     stage: checkout
     type: git-clone
-    repo: 'codefresh-contrib/terraform-sample-app'
+    repo: 'sandrogattuso/terraform-sample-app'
     revision: master
-    git: github      
-  SetupAuth:
-    image: alpine:3.9
-    title: Setting up Google cloud auth and TF_VARS
+    git: github
+  Setup:
+    image: 'google/cloud-sdk'
+    title: Setting up Google cloud auth and Variables
     stage: prepare
+    shell: bash
     commands:
-      - echo $ACCOUNT_JSON_CONTENT > /codefresh/volume/account.json
+      - cf_export BUCKET_URL="gs://$STORAGE_BUCKET/codefresh/$STACK_FILE"
+      - STACK_ARRAY=($STACKS)
+      - echo "$ACCOUNT_JSON_CONTENT" | base64 -d > /codefresh/volume/account.json
       - cf_export GOOGLE_CLOUD_KEYFILE_JSON=/codefresh/volume/account.json
-      - echo gcp_project="$GCLOUD_PROJECT" >/codefresh/volume/vars.tf 
-  DeployWithTerraform:
+      - cf_export GOOGLE_APPLICATION_CREDENTIALS=/codefresh/volume/account.json
+      - echo gcp_project = \"$GCLOUD_PROJECT\" > vars.auto.tfvars
+      - gcloud auth activate-service-account --key-file=/codefresh/volume/account.json
+      - gsutil cp $BUCKET_URL $STACK_FILE || echo "0" > $STACK_FILE
+      - cf_export CURRENT_STACK=$(cat $STACK_FILE)
+      - cf_export OLD_STACK="$(( ($CURRENT_STACK+1) %2 ))"
+      - cf_export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+  TerraformPlan:
     image: hashicorp/terraform:0.12.0
-    title: Deploying Terraform plan
+    title: Terraform plan
+    stage: plan
+    commands:
+      - echo $CURRENT_STACK
+      - echo 'yes' | terraform init -force-copy -backend-config="bucket=$STORAGE_BUCKET"
+      - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
+      - cf_export BLUE_GREEN=false
+      - terraform plan -detailed-exitcode || if [[ $? == 2 ]]; then cf_export BLUE_GREEN=true; cf_export OLD_STACK=$CURRENT_STACK; cf_export CURRENT_STACK=$(( ($CURRENT_STACK+1) %2 )); else echo "Error excuting plan"; exit 1; fi
+  SetCurrentStackName:
+    image: 'google/cloud-sdk'
+    title: Setting Stack Name
+    stage: plan
+    shell: bash
+    commands:
+      - STACK_ARRAY=($STACKS)
+      - cf_export OLD_STACK_NAME="${STACK_ARRAY[$OLD_STACK]}"
+      - cf_export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+  TerraformApply:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform apply
     stage: deploy
     commands:
-      - terraform init
+      - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
       - terraform apply -auto-approve 
+  UpdateLiveStack:
+    image: 'google/cloud-sdk'
+    title: Update Live stack information
+    stage: deploy
+    commands:
+      - echo "$CURRENT_STACK" > $STACK_FILE
+      - gcloud auth activate-service-account --key-file=/codefresh/volume/account.json
+      - gsutil cp $STACK_FILE $BUCKET_URL
+  TerraformDestroy:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform destroy
+    stage: destroy
+    commands:
+      - terraform workspace select $OLD_STACK_NAME || terraform workspace new $OLD_STACK_NAME
+      - terraform destroy -auto-approve
+    when:
+      condition:
+        all:
+          executedBlueGreen: '${{BLUE_GREEN}}'
