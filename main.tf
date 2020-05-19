@@ -4,8 +4,15 @@ provider "google" {
   zone    = "australia-southeast1-b"
 }
 
+terraform {
+  backend "gcs" {
+    bucket  = "sandro-devisland-tf-state"
+    prefix  = "codefresh/${terraform.workspace}/state"
+  }
+}
+
 resource "google_compute_instance" "vm_instance" {
-  name         = "terraform-instance"
+  name         = "terraform-${terraform.workspace}-instance"
   machine_type = "f1-micro"
 
   boot_disk {
