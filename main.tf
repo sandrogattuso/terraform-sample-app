@@ -8,7 +8,7 @@ provider "google" {
 
 terraform {
   backend "gcs" {
-    prefix  = "codefresh/${terraform.workspace}"
+    prefix  = "codefresh/sample-app-tf"
   }
 }
 
