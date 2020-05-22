@@ -1,0 +1,73 @@
+version: '1.0'
+stages:
+  - checkout
+  - prepare
+  - plan
+  - deploy
+  - destroy
+steps:
+  main_clone:
+    title: Cloning main repository...
+    stage: checkout
+    type: git-clone
+    repo: 'sandrogattuso/terraform-sample-app'
+    revision: master
+    git: github
+  Setup:
+    image: 'google/cloud-sdk'
+    title: Setting up Google cloud auth and Variables
+    stage: prepare
+    shell: bash
+    commands:
+      - STACK_ARRAY=($STACKS)
+      - echo gcp_project = \"$GCLOUD_PROJECT\" > vars.auto.tfvars
+      - gsutil cp "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE" $STACK_FILE || echo "0" > $STACK_FILE
+      - export CURRENT_STACK=$(cat $STACK_FILE)
+      - export OLD_STACK="$(( ($CURRENT_STACK+1) %2 ))"
+      - export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - cf_export CURRENT_STACK OLD_STACK CURRENT_STACK_NAME
+  TerraformPlan:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform plan
+    stage: plan
+    commands:
+      - echo 'yes' | terraform init -force-copy -backend-config="bucket=$STORAGE_BUCKET"
+      - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
+      - export BLUE_GREEN=false
+      - terraform plan -detailed-exitcode || if [[ $? == 2 ]]; then export BLUE_GREEN=true; export OLD_STACK=$CURRENT_STACK; export CURRENT_STACK=$(( ($CURRENT_STACK+1) %2 )); else echo "Error excuting plan"; exit 1; fi
+      - cf_export BLUE_GREEN OLD_STACK CURRENT_STACK
+  SetCurrentStackName:
+    image: 'google/cloud-sdk'
+    title: Setting Stack Name
+    stage: plan
+    shell: bash
+    commands:
+      - export STACK_ARRAY=($STACKS)
+      - export OLD_STACK_NAME="${STACK_ARRAY[$OLD_STACK]}"
+      - export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - cf_export OLD_STACK_NAME CURRENT_STACK_NAME
+  TerraformApply:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform apply
+    stage: deploy
+    commands:
+      - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
+      - terraform apply -auto-approve 
+  UpdateLiveStack:
+    image: 'google/cloud-sdk'
+    title: Update Live stack information
+    stage: deploy
+    commands:
+      - echo "$CURRENT_STACK" > $STACK_FILE
+      - gsutil cp $STACK_FILE "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE"
+  TerraformDestroy:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform destroy
+    stage: destroy
+    commands:
+      - terraform workspace select $OLD_STACK_NAME || terraform workspace new $OLD_STACK_NAME
+      - terraform destroy -auto-approve
+    when:
+      condition:
+        all:
+          executedBlueGreen: '${{BLUE_GREEN}}'
