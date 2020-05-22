@@ -1,0 +1,35 @@
+version: '1.0'
+stages:
+  - checkout
+  - prepare
+  - plan
+  - deploy
+  - destroy
+steps:
+  main_clone:
+    title: Cloning main repository...
+    stage: checkout
+    type: git-clone
+    repo: 'sandrogattuso/terraform-sample-app'
+    revision: master
+    git: github
+  Setup:
+    image: 'google/cloud-sdk'
+    title: Setting up Google cloud auth and Variables
+    stage: prepare
+    shell: bash
+    commands:
+      - STACK_ARRAY=($STACKS)
+      - echo gcp_project = \"$GCLOUD_PROJECT\" > vars.auto.tfvars
+      - gsutil cp "gs://$STORAGE_BUCKET/codefresh/$STACK_FILE" $STACK_FILE || echo "0" > $STACK_FILE
+      - export CURRENT_STACK=$(cat $STACK_FILE)
+      - export CURRENT_STACK_NAME="${STACK_ARRAY[$CURRENT_STACK]}"
+      - cf_export CURRENT_STACK CURRENT_STACK_NAME
+  TerraformDestroy:
+    image: hashicorp/terraform:0.12.0
+    title: Terraform destroy
+    stage: destroy
+    commands:
+      - echo 'yes' | terraform init -force-copy -backend-config="bucket=$STORAGE_BUCKET"
+      - terraform workspace select $CURRENT_STACK_NAME || terraform workspace new $CURRENT_STACK_NAME
+      - terraform destroy -auto-approve
