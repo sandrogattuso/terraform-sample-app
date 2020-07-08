@@ -1,5 +1,5 @@
 # Using Terraform inside Docker with Codefresh
-..
+
 ![Docker plus Terraform plus Codefresh](docker-terraform-codefresh.jpg)
 
 This is an example Terraform deployment that runs in a Codefresh pipeline using docker.
