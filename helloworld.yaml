@@ -1,0 +1,19 @@
+version: '1.0'
+stages:
+  - checkout
+  - hello
+steps:
+  main_clone:
+    title: Cloning main repository...
+    stage: checkout
+    type: git-clone
+    repo: 'sandrogattuso/terraform-sample-app'
+    revision: '${CF_REVISION}'
+    git: github
+  hellow:
+    image: 'alpine:latest'
+    title: Say hello
+    stage: hello
+    shell: bash
+    commands:
+      - echo "master"
