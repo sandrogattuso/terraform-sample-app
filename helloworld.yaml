@@ -16,4 +16,4 @@ steps:
     stage: hello
     shell: bash
     commands:
-      - echo "master"
+      - echo "test/feature"
